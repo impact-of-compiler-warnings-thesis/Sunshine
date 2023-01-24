@@ -1,0 +1,69 @@
+name: SonarCloud
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  build:
+    name: Build and analyze
+    runs-on: ubuntu-latest
+    env:
+      BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory # Directory where build-wrapper output will be placed
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          submodules: recursive
+      - name: Install sonar-scanner and build-wrapper
+        uses: SonarSource/sonarcloud-github-c-cpp@v1
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install ninja-build \
+                           libboost-all-dev \
+                           libavdevice-dev \
+                           libcap-dev \
+                           libcurl4-openssl-dev \
+                           libdrm-dev \
+                           libevdev-dev \
+                           libnuma-dev \
+                           libopus-dev \
+                           libpulse-dev \
+                           libssl-dev \
+                           libva-dev \
+                           libvdpau-dev \
+                           libwayland-dev \
+                           libx11-dev \
+                           libxcb-shm0-dev \
+                           libxcb-xfixes0-dev \
+                           libxcb1-dev \
+                           libxfixes-dev \
+                           libxrandr-dev \
+                           libxtst-dev
+      - name: Install CUDA
+        uses: Jimver/cuda-toolkit@v0.2.8
+        id: cuda-toolkit
+        with:
+          cuda: '11.7.0'
+      - name: Generate build files
+        run: |
+          mkdir build && cd build
+          cmake .. -GNinja \
+                   -DCMAKE_BUILD_TYPE=Debug \
+                   -DSUNSHINE_ASSETS_DIR=share/sunshine \
+                   -DSUNSHINE_EXECUTABLE_PATH=/usr/bin/sunshine \
+                   -DSUNSHINE_ENABLE_WAYLAND=ON \
+                   -DSUNSHINE_ENABLE_X11=ON \
+                   -DSUNSHINE_ENABLE_DRM=ON \
+                   -DSUNSHINE_ENABLE_CUDA=ON
+      - name: Run build-wrapper
+        run: |
+          build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} ninja -C build
+      - name: Run sonar-scanner
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          sonar-scanner --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}"
